@@ -2,6 +2,7 @@
 
 #include "ABCharacter.h"
 #include "ABAnimInstance.h"
+#include "ABWeapon.h"
 #include "DrawDebugHelpers.h"
 
 
@@ -33,6 +34,19 @@ AABCharacter::AABCharacter()
 	{
 		GetMesh()->SetAnimInstanceClass(WARRIOR_ANIM.Class);
 	}
+
+	/*FName WeaponSocket(TEXT("hand_rSocket"));
+	if (GetMesh()->DoesSocketExist(WeaponSocket))
+	{
+		Weapon = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("WEAPON"));
+		static ConstructorHelpers::FObjectFinder<USkeletalMesh> SK_WEAPON(TEXT("/Game/InfinityBladeWeapons/Weapons/Blade/Silly_Weapons/Blade_Baguette/SK_Blade_Baguette.SK_Blade_Baguette"));
+		if (SK_WEAPON.Succeeded()) 
+		{
+			Weapon->SetSkeletalMesh(SK_WEAPON.Object);
+		}
+
+		Weapon->SetupAttachment(GetMesh(), WeaponSocket);
+	}*/
 
 	SetControlMode(EControlMode::GTA);
 
@@ -80,6 +94,23 @@ void AABCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
+}
+
+bool AABCharacter::CanSetWeapon()
+{
+	return (nullptr == CurrentWeapon);
+}
+
+void AABCharacter::SetWeapon(AABWeapon* NewWeapon)
+{
+	ABCHECK(nullptr != NewWeapon && nullptr == CurrentWeapon);
+	FName WeaponSocket(TEXT("hand_rSocket"));
+	if (nullptr != NewWeapon)
+	{
+		NewWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponSocket);
+		NewWeapon->SetOwner(this);
+		CurrentWeapon = NewWeapon;
+	}
 }
 
 void AABCharacter::SetControlMode(EControlMode NewControlMode)
