@@ -6,12 +6,14 @@
 #include "GameFramework/Character.h"
 #include "ABCharacter.generated.h"
 
+DECLARE_MULTICAST_DELEGATE(FOnAttackEndDelegate);
+
 UCLASS()
 class ARENABATTLE_API AABCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
-public:
+	public:
 	// Sets default values for this character's properties
 	AABCharacter();
 
@@ -22,7 +24,8 @@ protected:
 	enum class EControlMode
 	{
 		GTA,
-		DIABLO
+		DIABLO,
+		NPC
 	};
 
 	void SetControlMode(EControlMode NewControlMode);
@@ -38,7 +41,8 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 	virtual void PostInitializeComponents() override;
-	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const&DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	virtual void PossessedBy(AController* NewController) override;
 
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
@@ -46,14 +50,11 @@ public:
 	bool CanSetWeapon();
 	void SetWeapon(class AABWeapon* NewWeapon);
 
-	UPROPERTY(VisibleAnywhere, Category=Weapon)
+	UPROPERTY(VisibleAnywhere, Category = Weapon)
 	class AABWeapon* CurrentWeapon;
 
-	UPROPERTY(VisibleAnywhere, Category=Stat)
+	UPROPERTY(VisibleAnywhere, Category = Stat)
 	class UABCharacterStatComponent* CharacterStat;
-
-	UPROPERTY(VisibleAnywhere, Category = Weapon)
-	USkeletalMeshComponent* Weapon;
 
 	UPROPERTY(VisibleAnywhere, Category = Camera)
 	USpringArmComponent* SpringArm;
@@ -64,15 +65,16 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = UI)
 	class UWidgetComponent* HPBarWidget;
 
+	void Attack();
+	FOnAttackEndDelegate OnAttackEnd;
+	
 private:
 	void UpDown(float NewAxisValue);
 	void LeftRight(float NewAxisValue);
 	void Turn(float NewAxisValue);
-	void LookUp(float NewAxisVale);
+	void LookUp(float NewAxisValue);
 
 	void ViewChange();
-
-	void Attack();
 
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
@@ -100,10 +102,9 @@ private:
 	UPROPERTY()
 	class UABAnimInstance* ABAnim;
 
-	UPROPERTY(VisibleInstanceOnly, BluePrintReadOnly,Category = Attack, Meta = (AllowPrivateAccess = true))
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = Attack, Meta = (AllowPrivateAccess = true))
 	float AttackRange;
 
-	UPROPERTY(VisibleInstanceOnly, BluePrintReadOnly, Category = Attack, Meta = (AllowPrivateAccess = true))
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = Attack, Meta = (AllowPrivateAccess = true))
 	float AttackRadius;
-	
 };

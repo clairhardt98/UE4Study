@@ -7,12 +7,14 @@
 #include "DrawDebugHelpers.h"
 #include "Components/WidgetComponent.h"
 #include "ABCharacterWidget.h"
+#include "ABAIController.h"
 
-
+// Sets default values
 AABCharacter::AABCharacter()
 {
- 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
+	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SPRINGARM"));
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("CAMERA"));
 	CharacterStat = CreateDefaultSubobject<UABCharacterStatComponent>(TEXT("CHARACTERSTAT"));
@@ -21,12 +23,13 @@ AABCharacter::AABCharacter()
 	SpringArm->SetupAttachment(GetCapsuleComponent());
 	Camera->SetupAttachment(SpringArm);
 	HPBarWidget->SetupAttachment(GetMesh());
-	
+
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -88.0f), FRotator(0.0f, -90.0f, 0.0f));
 	SpringArm->TargetArmLength = 400.0f;
 	SpringArm->SetRelativeRotation(FRotator(-15.0f, 0.0f, 0.0f));
 
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> SK_CARDBOARD(TEXT("/Game/InfinityBladeWarriors/Character/CompleteCharacters/SK_CharM_Cardboard.SK_CharM_Cardboard"));
+
 	if (SK_CARDBOARD.Succeeded())
 	{
 		GetMesh()->SetSkeletalMesh(SK_CARDBOARD.Object);
@@ -35,14 +38,28 @@ AABCharacter::AABCharacter()
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 
 	static ConstructorHelpers::FClassFinder<UAnimInstance> WARRIOR_ANIM(TEXT("/Game/Book/Animations/WarriorAnimBlueprint.WarriorAnimBlueprint_C"));
+
 	if (WARRIOR_ANIM.Succeeded())
 	{
 		GetMesh()->SetAnimInstanceClass(WARRIOR_ANIM.Class);
 	}
 
+	SetControlMode(EControlMode::DIABLO);
+
+	ArmLengthSpeed = 3.0f;
+	ArmRotationSpeed = 10.0f;
+	GetCharacterMovement()->JumpZVelocity = 800.0f;
+
+	IsAttacking = false;
+	MaxCombo = 4;
+	AttackEndComboState();
+
+	GetCapsuleComponent()->SetCollisionProfileName(TEXT("ABCharacter"));
+	AttackRange = 200.0f;
+	AttackRadius = 50.0f;
+
 	HPBarWidget->SetRelativeLocation(FVector(0.0f, 0.0f, 180.0f));
 	HPBarWidget->SetWidgetSpace(EWidgetSpace::Screen);
-
 	static ConstructorHelpers::FClassFinder<UUserWidget> UI_HUD(TEXT("/Game/Book/UI/UI_HPBar.UI_HPBar_C"));
 	if (UI_HUD.Succeeded())
 	{
@@ -50,23 +67,84 @@ AABCharacter::AABCharacter()
 		HPBarWidget->SetDrawSize(FVector2D(150.0f, 50.0f));
 	}
 
-	SetControlMode(EControlMode::GTA);
+	AIControllerClass = AABAIController::StaticClass();
+	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+}
 
-	ArmLengthSpeed = 3.0f;
-	ArmRotationSpeed = 10.0f;
+// Called when the game starts or when spawned
+void AABCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+}
 
-	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
-	GetCharacterMovement()->JumpZVelocity = 600.0f;
+void AABCharacter::SetControlMode(EControlMode NewControlMode)
+{
+	CurrentControlMode = NewControlMode;
 
-	IsAttacking = false;
+	switch (CurrentControlMode)
+	{
+	case EControlMode::GTA:
+		//SpringArm->TargetArmLength = 450.0f;
+		//SpringArm->SetRelativeRotation(FRotator::ZeroRotator);
+		ArmLengthTo = 450.0f;
+		SpringArm->bUsePawnControlRotation = true;
+		SpringArm->bInheritPitch = true;
+		SpringArm->bInheritRoll = true;
+		SpringArm->bInheritYaw = true;
+		SpringArm->bDoCollisionTest = true;
+		bUseControllerRotationYaw = false;
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+		GetCharacterMovement()->bUseControllerDesiredRotation = false;
+		GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+		break;
+	case EControlMode::DIABLO:
+		//SpringArm->TargetArmLength = 800.0f;
+		//SpringArm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f));
+		ArmLengthTo = 800.0f;
+		ArmRotationTo = FRotator(-45.0f, 0.0f, 0.0f);
+		SpringArm->bUsePawnControlRotation = false;
+		SpringArm->bInheritPitch = false;
+		SpringArm->bInheritRoll = false;
+		SpringArm->bInheritYaw = false;
+		SpringArm->bDoCollisionTest = false;
+		bUseControllerRotationYaw = false;
+		GetCharacterMovement()->bOrientRotationToMovement = false;
+		GetCharacterMovement()->bUseControllerDesiredRotation = true;
+		GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+		break;
+	case EControlMode::NPC:
+		bUseControllerRotationYaw = false;
+		GetCharacterMovement()->bUseControllerDesiredRotation = false;
+		GetCharacterMovement()->bOrientRotationToMovement = true;
+		GetCharacterMovement()->RotationRate = FRotator(0.0f, 480.0f, 0.0f);
+		break;
+	}
+}
 
-	MaxCombo = 4;
-	AttackEndComboState();
+// Called every frame
+void AABCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
 
-	GetCapsuleComponent()->SetCollisionProfileName(TEXT("ABCharacter"));
+	SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, ArmLengthTo, DeltaTime, ArmLengthSpeed);
 
-	AttackRange = 200.0f;
-	AttackRadius = 50.0f;
+	switch (CurrentControlMode)
+	{
+	case EControlMode::DIABLO:
+		SpringArm->RelativeRotation = FMath::RInterpTo(SpringArm->RelativeRotation, ArmRotationTo, DeltaTime, ArmRotationSpeed);
+		break;
+	}
+
+	switch (CurrentControlMode)
+	{
+	case EControlMode::DIABLO:
+		if (DirectionToMove.SizeSquared() > 0.0f)
+		{
+			GetController()->SetControlRotation(FRotationMatrix::MakeFromX(DirectionToMove).Rotator());
+			AddMovementInput(DirectionToMove);
+		}
+		break;
+	}
 }
 
 void AABCharacter::PostInitializeComponents()
@@ -77,8 +155,9 @@ void AABCharacter::PostInitializeComponents()
 
 	ABAnim->OnMontageEnded.AddDynamic(this, &AABCharacter::OnAttackMontageEnded);
 
-	ABAnim->OnNextAttackCheck.AddLambda([this]()->void
+	ABAnim->OnNextAttackCheck.AddLambda([this]() -> void
 		{
+
 			ABLOG(Warning, TEXT("OnNextAttackCheck"));
 			CanNextCombo = false;
 
@@ -88,9 +167,10 @@ void AABCharacter::PostInitializeComponents()
 				ABAnim->JumpToAttackMontageSection(CurrentCombo);
 			}
 		});
+
 	ABAnim->OnAttackHitCheck.AddUObject(this, &AABCharacter::AttackCheck);
 
-	CharacterStat->OnHPIsZero.AddLambda([this]()->void
+	CharacterStat->OnHPIsZero.AddLambda([this]() -> void
 		{
 			ABLOG(Warning, TEXT("OnHPIsZero"));
 			ABAnim->SetDeadAnim();
@@ -104,10 +184,44 @@ void AABCharacter::PostInitializeComponents()
 	}
 }
 
-void AABCharacter::BeginPlay()
+float AABCharacter::TakeDamage(float DamageAmount, FDamageEvent const & DamageEvent, AController * EventInstigator, AActor * DamageCauser)
 {
-	Super::BeginPlay();
-	
+	float FinalDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+	ABLOG(Warning, TEXT("Actor : %s took Damage : %f"), *GetName(), FinalDamage);
+
+	CharacterStat->SetDamage(FinalDamage);
+	return FinalDamage;
+}
+
+void AABCharacter::PossessedBy(AController * NewController)
+{
+	Super::PossessedBy(NewController);
+
+	if (IsPlayerControlled())
+	{
+		SetControlMode(EControlMode::DIABLO);
+		GetCharacterMovement()->MaxWalkSpeed = 600.0f;
+	}
+	else
+	{
+		SetControlMode(EControlMode::NPC);
+		GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+	}
+}
+
+// Called to bind functionality to input
+void AABCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+
+	PlayerInputComponent->BindAction(TEXT("ViewChange"), EInputEvent::IE_Pressed, this, &AABCharacter::ViewChange);
+	PlayerInputComponent->BindAction(TEXT("Jump"), EInputEvent::IE_Pressed, this, &ACharacter::Jump);
+	PlayerInputComponent->BindAction(TEXT("Attack"), EInputEvent::IE_Pressed, this, &AABCharacter::Attack);
+
+	PlayerInputComponent->BindAxis(TEXT("UpDown"), this, &AABCharacter::UpDown);
+	PlayerInputComponent->BindAxis(TEXT("LeftRight"), this, &AABCharacter::LeftRight);
+	PlayerInputComponent->BindAxis(TEXT("Turn"), this, &AABCharacter::Turn);
+	PlayerInputComponent->BindAxis(TEXT("LookUp"), this, &AABCharacter::LookUp);
 }
 
 bool AABCharacter::CanSetWeapon()
@@ -115,7 +229,7 @@ bool AABCharacter::CanSetWeapon()
 	return (nullptr == CurrentWeapon);
 }
 
-void AABCharacter::SetWeapon(AABWeapon* NewWeapon)
+void AABCharacter::SetWeapon(AABWeapon * NewWeapon)
 {
 	ABCHECK(nullptr != NewWeapon && nullptr == CurrentWeapon);
 	FName WeaponSocket(TEXT("hand_rSocket"));
@@ -127,98 +241,13 @@ void AABCharacter::SetWeapon(AABWeapon* NewWeapon)
 	}
 }
 
-void AABCharacter::SetControlMode(EControlMode NewControlMode)
-{
-	CurrentControlMode = NewControlMode;
-	
-	switch (CurrentControlMode)
-	{
-	case EControlMode::GTA:
-		/*SpringArm->TargetArmLength = 450.0f;
-		SpringArm->SetRelativeRotation(FRotator::ZeroRotator);*/
-		ArmLengthTo = 450.0f;
-		SpringArm->bUsePawnControlRotation = true;
-		SpringArm->bInheritPitch = true;
-		SpringArm->bInheritRoll = true;
-		SpringArm->bInheritYaw = true;
-		SpringArm->bDoCollisionTest = true;
-		bUseControllerRotationYaw = false;
-		GetCharacterMovement()->bOrientRotationToMovement = true;
-		GetCharacterMovement()->bUseControllerDesiredRotation = false;
-		GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-		break;
-
-	case EControlMode::DIABLO:
-		/*SpringArm->TargetArmLength = 800.0f;
-		SpringArm->SetRelativeRotation(FRotator(-45.0f,0.0f,0.0f));*/
-		ArmLengthTo = 800.0f;
-		ArmRotationTo = FRotator(-45.0f, 0.0f, 0.0f);
-		SpringArm->bUsePawnControlRotation = false;
-		SpringArm->bInheritPitch = false;
-		SpringArm->bInheritRoll = false;
-		SpringArm->bInheritYaw = false;
-		SpringArm->bDoCollisionTest = false;
-		bUseControllerRotationYaw = false;
-		GetCharacterMovement()->bOrientRotationToMovement = false;
-		GetCharacterMovement()->bUseControllerDesiredRotation = true;
-		GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-		GetCharacterMovement()->MaxWalkSpeed = 600.0f;
-		break;
-
-
-	}
-}
-
-void AABCharacter::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	SpringArm->TargetArmLength = FMath::FInterpTo(SpringArm->TargetArmLength, ArmLengthTo, DeltaTime, ArmLengthSpeed);
-
-	switch (CurrentControlMode)
-	{
-	case EControlMode::DIABLO:
-		SpringArm->RelativeRotation = FMath::RInterpTo(SpringArm->RelativeRotation, ArmRotationTo, DeltaTime, ArmRotationSpeed);
-	}
-
-	switch (CurrentControlMode)
-	{
-	case EControlMode::DIABLO:
-		if (DirectionToMove.SizeSquared() > 0.0f)
-		{
-			GetController()->SetControlRotation(FRotationMatrix::MakeFromX(DirectionToMove).Rotator());
-			AddMovementInput(DirectionToMove);
-		}
-		break;
-		
-	}
-
-}
-
-void AABCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	PlayerInputComponent->BindAction(TEXT("ViewChange"), EInputEvent::IE_Pressed, this, &AABCharacter::ViewChange);
-
-	PlayerInputComponent->BindAction(TEXT("Jump"), EInputEvent::IE_Pressed, this, &AABCharacter::Jump);
-
-	PlayerInputComponent->BindAction(TEXT("Attack"), EInputEvent::IE_Pressed, this, &AABCharacter::Attack);
-
-	PlayerInputComponent->BindAxis(TEXT("UpDown"), this, &AABCharacter::UpDown);
-	PlayerInputComponent->BindAxis(TEXT("LeftRight"), this, &AABCharacter::LeftRight);
-	PlayerInputComponent->BindAxis(TEXT("LookUp"), this, &AABCharacter::LookUp);
-	PlayerInputComponent->BindAxis(TEXT("Turn"), this, &AABCharacter::Turn);
-}
-
 void AABCharacter::UpDown(float NewAxisValue)
 {
 	switch (CurrentControlMode)
 	{
 	case EControlMode::GTA:
-		AddMovementInput(FRotationMatrix(GetControlRotation()).GetUnitAxis(EAxis::X), NewAxisValue);
+		AddMovementInput(FRotationMatrix(FRotator(0.0f, GetControlRotation().Yaw, 0.0f)).GetUnitAxis(EAxis::X), NewAxisValue);
 		break;
-
 	case EControlMode::DIABLO:
 		DirectionToMove.X = NewAxisValue;
 		break;
@@ -230,22 +259,10 @@ void AABCharacter::LeftRight(float NewAxisValue)
 	switch (CurrentControlMode)
 	{
 	case EControlMode::GTA:
-		AddMovementInput(FRotationMatrix(GetControlRotation()).GetUnitAxis(EAxis::Y), NewAxisValue);
+		AddMovementInput(FRotationMatrix(FRotator(0.0f, GetControlRotation().Yaw, 0.0f)).GetUnitAxis(EAxis::Y), NewAxisValue);
 		break;
-
 	case EControlMode::DIABLO:
 		DirectionToMove.Y = NewAxisValue;
-		break;
-	}
-}
-
-void AABCharacter::LookUp(float NewAxisValue)
-{
-	switch (CurrentControlMode)
-	{
-	case EControlMode::GTA:
-		AddControllerPitchInput(NewAxisValue);
-
 		break;
 	}
 }
@@ -256,7 +273,16 @@ void AABCharacter::Turn(float NewAxisValue)
 	{
 	case EControlMode::GTA:
 		AddControllerYawInput(NewAxisValue);
+		break;
+	}
+}
 
+void AABCharacter::LookUp(float NewAxisValue)
+{
+	switch (CurrentControlMode)
+	{
+	case EControlMode::GTA:
+		AddControllerPitchInput(NewAxisValue);
 		break;
 	}
 }
@@ -269,7 +295,6 @@ void AABCharacter::ViewChange()
 		GetController()->SetControlRotation(GetActorRotation());
 		SetControlMode(EControlMode::DIABLO);
 		break;
-
 	case EControlMode::DIABLO:
 		GetController()->SetControlRotation(SpringArm->RelativeRotation);
 		SetControlMode(EControlMode::GTA);
@@ -277,14 +302,6 @@ void AABCharacter::ViewChange()
 	}
 }
 
-float AABCharacter::TakeDamage(float DamageAmount, struct FDamageEvent const&DamageEvent, class AController* EventInstigator, AActor* DamageCauser) 
-{
-	float FinalDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-	ABLOG(Warning, TEXT("Actor : %s took Damage : %f"), *GetName(), FinalDamage);
-	
-	CharacterStat->SetDamage(FinalDamage);
-	return FinalDamage;
-}
 void AABCharacter::Attack()
 {
 	if (IsAttacking)
@@ -303,15 +320,16 @@ void AABCharacter::Attack()
 		ABAnim->JumpToAttackMontageSection(CurrentCombo);
 		IsAttacking = true;
 	}
-
 }
 
-void AABCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+void AABCharacter::OnAttackMontageEnded(UAnimMontage * Montage, bool bInterrupted)
 {
 	ABCHECK(IsAttacking);
 	ABCHECK(CurrentCombo > 0);
 	IsAttacking = false;
 	AttackEndComboState();
+
+	OnAttackEnd.Broadcast();
 }
 
 void AABCharacter::AttackStartComboState()
@@ -320,18 +338,17 @@ void AABCharacter::AttackStartComboState()
 	IsComboInputOn = false;
 	ABCHECK(FMath::IsWithinInclusive<int32>(CurrentCombo, 0, MaxCombo - 1));
 	CurrentCombo = FMath::Clamp<int32>(CurrentCombo + 1, 1, MaxCombo);
-	GetCharacterMovement()->MaxWalkSpeed = 200.0f;
 }
 
 void AABCharacter::AttackEndComboState()
 {
-	GetCharacterMovement()->MaxWalkSpeed = 600.0f;
 	IsComboInputOn = false;
 	CanNextCombo = false;
 	CurrentCombo = 0;
 }
 
-void AABCharacter::AttackCheck() {
+void AABCharacter::AttackCheck()
+{
 	FHitResult HitResult;
 	FCollisionQueryParams Params(NAME_None, false, this);
 	bool bResult = GetWorld()->SweepSingleByChannel(
@@ -368,6 +385,7 @@ void AABCharacter::AttackCheck() {
 		if (HitResult.Actor.IsValid())
 		{
 			ABLOG(Warning, TEXT("Hit Actor Name : %s"), *HitResult.Actor->GetName());
+
 			FDamageEvent DamageEvent;
 			HitResult.Actor->TakeDamage(CharacterStat->GetAttack(), DamageEvent, GetController(), this);
 		}
