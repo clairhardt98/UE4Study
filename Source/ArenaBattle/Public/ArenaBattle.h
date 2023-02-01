@@ -4,6 +4,15 @@
 
 #include "EngineMinimal.h"
 
+UENUM(BlueprintType)
+enum class ECharacterState : uint8
+{
+	PREINIT,
+	LOADING,
+	READY,
+	DEAD
+};
+
 DECLARE_LOG_CATEGORY_EXTERN(ArenaBattle, Log, All);
 
 //로그 카테고리를 ArenaBattle로 고정하고 로그를 남길 때 추가로 발생한 함수 이름과 코드 라인을 함께 출력

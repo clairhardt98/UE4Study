@@ -14,13 +14,22 @@ class ARENABATTLE_API AABPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 	
+public:
+	AABPlayerController();
+
+	virtual void PostInitializeComponents() override;
+	virtual void Possess(APawn* aPawn) override;
+
+	class UABHUDWidget* GetHUDWidget() const;
 	
 protected:
 	virtual void BeginPlay() override;
 
-public:
-	virtual void PostInitializeComponents() override;
-	virtual void Possess(APawn* aPawn) override;
-	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = UI)
+	TSubclassOf<class UABHUDWidget> HUDWidgetClass;	
+
+private:
+	UPROPERTY()
+	class UABHUDWidget* HUDWidget;
 	
 };
