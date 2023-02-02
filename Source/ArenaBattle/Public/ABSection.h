@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "ABSection.generated.h"
 
+
 UCLASS()
 class ARENABATTLE_API AABSection : public AActor
 {
@@ -40,6 +41,9 @@ private:
 	void OnGateTriggerBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult);
 
 	void OnNPCSpawn();
+
+	UFUNCTION()
+	void OnKeyNPCDestroyed(AActor* DestroyedActor);
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = Mesh, Meta = (AllowPrivateAccess = true))

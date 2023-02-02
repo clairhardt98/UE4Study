@@ -307,12 +307,23 @@ void AABCharacter::PostInitializeComponents()
 
 }
 
+int32 AABCharacter::GetExp() const
+{
+	return CharacterStat->GetDropExp();
+}
+
 float AABCharacter::TakeDamage(float DamageAmount, FDamageEvent const & DamageEvent, AController * EventInstigator, AActor * DamageCauser)
 {
 	float FinalDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
 	ABLOG(Warning, TEXT("Actor : %s took Damage : %f"), *GetName(), FinalDamage);
 
 	CharacterStat->SetDamage(FinalDamage);
+	if (EventInstigator->IsPlayerController())
+	{
+		auto ABPlayerController = Cast<AABPlayerController>(EventInstigator);
+		ABCHECK(nullptr != ABPlayerController, 0.0f);
+		ABPlayerController->NPCKill(this);
+	}
 	return FinalDamage;
 }
 

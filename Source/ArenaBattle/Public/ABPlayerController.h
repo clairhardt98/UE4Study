@@ -21,6 +21,8 @@ public:
 	virtual void Possess(APawn* aPawn) override;
 
 	class UABHUDWidget* GetHUDWidget() const;
+	void NPCKill(class AABCharacter* KilledNpc) const;
+	void AddGameScore() const;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -31,5 +33,8 @@ protected:
 private:
 	UPROPERTY()
 	class UABHUDWidget* HUDWidget;
+
+	UPROPERTY()
+	class AABPlayerState* ABPlayerState;
 	
 };
